@@ -5,6 +5,7 @@ from __future__ import absolute_import, division
 import collections
 import numbers
 import re
+import datetime as dt
 from six import string_types
 
 from openpyxl.compat import unicode
@@ -84,6 +85,14 @@ def split_address(address):
             row,col = addr.split('C')
             row = row[2:-1]
             col = col[2:-1]
+        # [<row>] format
+        elif re.match('^[\d\$]+$', addr):
+            row = addr
+            col = None
+        # [<col>] format
+        elif re.match('^[A-Z\$]$', addr):
+            row = None
+            col = addr
         else:
             raise Exception('Invalid address format ' + addr)
 
@@ -91,7 +100,30 @@ def split_address(address):
         return (sheet,col,row)
 
 
+def max_dimension(cellmap, sheet = None):
+    """
+    This function calculates the maximum dimension of the workbook or optionally the worksheet. It returns a tupple
+    of two integers, the first being the rows and the second being the columns.
+
+    :param cellmap: all the cells that should be used to calculate the maximum.
+    :param sheet:  (optionally) a string with the sheet name.
+    :return: a tupple of two integers, the first being the rows and the second being the columns.
+    """
+
+    cells = list(cellmap.values())
+    rows = 0
+    cols = 0
+    for cell in cells:
+        if sheet is None or cell.sheet == sheet:
+            rows = max(rows, int(cell.row))
+            cols = max(cols, int(col2num(cell.col)))
+
+    return (rows, cols)
+
+
 resolve_range_cache = {}
+
+
 def resolve_range(rng, should_flatten = False, sheet=''):
     # print 'RESOLVE RANGE splitting', rng
     if ':' not in rng:
@@ -124,10 +156,23 @@ def resolve_range(rng, should_flatten = False, sheet=''):
         return resolve_range_cache[key]
     else:
         if not is_range(rng):  return ([sheet + rng],1,1)
-
         # single cell, no range
-        sh, start_col, start_row = split_address(start)
-        sh, end_col, end_row = split_address(end)
+        if start.isdigit() and end.isdigit():
+            # This copes with 1:1 style ranges
+            start_col = "A"
+            start_row = start
+            end_col = "XFD"
+            end_row = end
+        elif start.isalpha() and end.isalpha():
+            # This copes with A:A style ranges
+            start_col = start
+            start_row = 1
+            end_col = end
+            end_row = 2**20
+        else:
+            sh, start_col, start_row = split_address(start)
+            sh, end_col, end_row = split_address(end)
+
         start_col_idx = col2num(start_col)
         end_col_idx = col2num(end_col);
 
@@ -400,16 +445,26 @@ def date_from_int(nb):
             if nb > max_days:
                 nb -= max_days
             else:
-                current_day = nb
+                current_day = int(nb)
                 nb = 0
 
     return (current_year, current_month, current_day)
+
+def int_from_date(date):
+    temp = dt.date(1899, 12, 30)    # Note, not 31st Dec but 30th!
+    delta = date - temp
+
+    return float(delta.days) + (float(delta.seconds) / 86400)
 
 def criteria_parser(criteria):
 
     if is_number(criteria):
         def check(x):
-            return x == criteria #and type(x) == type(criteria)
+            try:
+                x = float(x)
+            except:
+                return False
+            return x == float(criteria) #and type(x) == type(criteria)
     elif type(criteria) == str:
         search = re.search('(\W*)(.*)', criteria.lower()).group
         operator = search(1)
@@ -419,31 +474,39 @@ def criteria_parser(criteria):
         if operator == '<':
             def check(x):
                 if not is_number(x):
-                    raise TypeError('excellib.countif() doesnt\'t work for checking non number items against non equality')
+                    return False # Excel returns False when a string is compared with a value
                 return x < value
         elif operator == '>':
             def check(x):
                 if not is_number(x):
-                    raise TypeError('excellib.countif() doesnt\'t work for checking non number items against non equality')
+                    return False # Excel returns False when a string is compared with a value
                 return x > value
         elif operator == '>=':
             def check(x):
                 if not is_number(x):
-                    raise TypeError('excellib.countif() doesnt\'t work for checking non number items against non equality')
+                    return False # Excel returns False when a string is compared with a value
                 return x >= value
         elif operator == '<=':
             def check(x):
                 if not is_number(x):
-                    raise TypeError('excellib.countif() doesnt\'t work for checking non number items against non equality')
+                    return False # Excel returns False when a string is compared with a value
                 return x <= value
         elif operator == '<>':
             def check(x):
                 if not is_number(x):
-                    raise TypeError('excellib.countif() doesnt\'t work for checking non number items against non equality')
+                    return False # Excel returns False when a string is compared with a value
                 return x != value
+        elif operator == '=' and is_number(value):
+            def check(x):
+                if not is_number(x):
+                    return False # Excel returns False when a string is compared with a value
+                return x == value
+        elif operator == '=':
+            def check(x):
+                return str(x).lower() == str(value)
         else:
             def check(x):
-                return x == criteria
+                return str(x).lower() == criteria.lower()
     else:
         raise Exception('Could\'t parse criteria %s' % criteria)
 
@@ -463,6 +526,7 @@ def find_corresponding_index(list, criteria):
 
     return valid
 
+
 def check_length(range1, range2):
 
     if len(range1.values) != len(range2.values):
@@ -470,11 +534,12 @@ def check_length(range1, range2):
     else:
         return range2
 
+
 def extract_numeric_values(*args):
     values = []
 
     for arg in args:
-        if isinstance(arg, collections.Iterable) and type(arg) != list and type(arg) != tuple and type(arg) != str: # does not work fo other Iterable than RangeCore, but can t import RangeCore here for circular reference issues
+        if isinstance(arg, collections.Iterable) and type(arg) != list and type(arg) != tuple and type(arg) != str and type(arg) != unicode: # does not work fo other Iterable than RangeCore, but can t import RangeCore here for circular reference issues
             for x in arg.values:
                 if is_number(x) and type(x) is not bool: # excludes booleans from nested ranges
                     values.append(x)
