@@ -127,7 +127,10 @@ def value(text):
         text = text.replace('%', '')
         return float(text) / 100
     else:
-        return int(text)
+        try:
+            return int(text)
+        except:
+            return text
 
 
 def xlog(a):
