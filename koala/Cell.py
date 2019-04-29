@@ -70,10 +70,7 @@ class Cell(CellBase):
 
         self.__value = value
         self.python_expression = None
-        if (formula is not None) or is_range:
-            self.need_update = True
-        else:
-            self.need_update = False
+        self.need_update = False
         self.should_eval = should_eval
         self.__compiled_expression = None
         self.__is_range = is_range
