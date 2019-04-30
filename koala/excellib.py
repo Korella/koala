@@ -127,10 +127,7 @@ def value(text):
         text = text.replace('%', '')
         return float(text) / 100
     else:
-        try:
-            return int(text)
-        except:
-            return text
+        return int(text)
 
 
 def xlog(a):
@@ -421,6 +418,8 @@ def rows(array):
 
     if isinstance(array, (float, int)):
         rows = 1  # special case for A1:A1 type ranges which for some reason only return an int/float
+    elif array is None:
+        rows = 1  # some A1:A1 ranges return None (issue with ref cell)
     else:
         rows = len(array.values)
 
@@ -744,7 +743,7 @@ def date(year, month, day): # Excel reference: https://support.office.com/en-us/
         return result
 
 
-def yearfrac(start_date, end_date, basis=0): # Excel reference: https://support.office.com/en-us/article/YEARFRAC-function-3844141e-c76d-4143-82b6-208454ddc6a8
+def yearfrac(start_date, end_date, basis = 0): # Excel reference: https://support.office.com/en-us/article/YEARFRAC-function-3844141e-c76d-4143-82b6-208454ddc6a8
 
     def actual_nb_days_ISDA(start, end): # needed to separate days_in_leap_year from days_not_leap_year
         y1, m1, d1 = start
@@ -779,7 +778,7 @@ def yearfrac(start_date, end_date, basis=0): # Excel reference: https://support.
 
         delta = date(*end) - date(*start)
 
-        if delta <= 366:
+        if delta <= 365:
             if is_leap_year(y1) and is_leap_year(y2):
                 denom = 366
             elif is_leap_year(y1) and date(y1, m1, d1) <= date(y1, 2, 29):
@@ -808,7 +807,7 @@ def yearfrac(start_date, end_date, basis=0): # Excel reference: https://support.
     if end_date < 0:
         return ExcelError('#VALUE!', 'end_date %s must be positive' % str(end_date))
 
-    if start_date > end_date:  # switch dates if start_date > end_date
+    if start_date > end_date: # switch dates if start_date > end_date
         temp = end_date
         end_date = start_date
         start_date = temp
@@ -816,23 +815,23 @@ def yearfrac(start_date, end_date, basis=0): # Excel reference: https://support.
     y1, m1, d1 = date_from_int(start_date)
     y2, m2, d2 = date_from_int(end_date)
 
-    if basis == 0:  # US 30/360
+    if basis == 0: # US 30/360
         d2 = 30 if d2 == 31 and (d1 == 31 or d1 == 30) else min(d2, 31)
         d1 = 30 if d1 == 31 else d1
 
         count = 360 * (y2 - y1) + 30 * (m2 - m1) + (d2 - d1)
         result = count / 360
 
-    elif basis == 1:  # Actual/actual
+    elif basis == 1: # Actual/actual
         result = actual_nb_days_AFB_alter((y1, m1, d1), (y2, m2, d2))
 
-    elif basis == 2:  # Actual/360
+    elif basis == 2: # Actual/360
         result = (end_date - start_date) / 360
 
-    elif basis == 3:  # Actual/365
+    elif basis == 3: # Actual/365
         result = (end_date - start_date) / 365
 
-    elif basis == 4:  # Eurobond 30/360
+    elif basis == 4: # Eurobond 30/360
         d2 = 30 if d2 == 31 else d2
         d1 = 30 if d1 == 31 else d1
 
@@ -841,6 +840,7 @@ def yearfrac(start_date, end_date, basis=0): # Excel reference: https://support.
 
     else:
         return ExcelError('#VALUE!', '%d must be 0, 1, 2, 3 or 4' % basis)
+
 
     return result
 
